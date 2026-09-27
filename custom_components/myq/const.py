@@ -33,12 +33,10 @@ BROWSER_USER_AGENT: Final = (
 BRAND_ID: Final = "1"
 
 BROWSER_AUTH_TIMEOUT: Final = timedelta(minutes=10)
-FIREBASE_PROJECT_ID: Final = "myq-transition-test"
-FIREBASE_APP_ID: Final = "1:169499880894:android:120796f2b5e44ca7"
-FIREBASE_API_KEY: Final = "AIzaSyDYwdJBRp6H3UhrCp5LGY8XTPJG7hTeCgw"
-FIREBASE_DEBUG_TOKEN: Final = "25A02BB5-4064-4555-9414-F3449D5E5E75"
-ANDROID_PACKAGE: Final = "com.chamberlain.android.liftmaster.myq"
-ANDROID_CERT_SHA1: Final = "da2bda70ee8a9062d076babe65924caf9a8b98e9"
+APP_CHECK_DATA: Final = bytes.fromhex(
+    "26ce38db38df881debb4aa63859dfc9f73874291c4c7091ff400244f7203664472837397"
+    "22c99b1cf1b9e43bd8c3e6d2209204f3c0980c1dae552a760b722c1d18ce0daf3bc9a331"
+)
 
 DEFAULT_UPDATE_INTERVAL: Final = timedelta(seconds=30)
 TOKEN_EXPIRY_MARGIN: Final = timedelta(minutes=1)

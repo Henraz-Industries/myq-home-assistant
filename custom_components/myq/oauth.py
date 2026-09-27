@@ -8,19 +8,15 @@ import secrets
 import time
 import urllib.parse
 from collections.abc import Callable, Mapping
-from typing import cast
+from typing import Final, cast
 
 from aiohttp import ClientSession
 
+from .app_check import AppCheckProfile
 from .const import (
-    ANDROID_CERT_SHA1,
-    ANDROID_PACKAGE,
+    APP_CHECK_DATA,
     APP_VERSION,
     BRAND_ID,
-    FIREBASE_API_KEY,
-    FIREBASE_APP_ID,
-    FIREBASE_DEBUG_TOKEN,
-    FIREBASE_PROJECT_ID,
     IDENTITY_BASE_URL,
     OAUTH_CLIENT_ID,
     OAUTH_REDIRECT_URI,
@@ -32,6 +28,11 @@ from .exceptions import MyQApiError, MyQAuthenticationError
 from .models import OAuthTokens
 
 TokenListener = Callable[[OAuthTokens], None]
+
+_APP_CHECK_DATA: Final = bytes.fromhex(
+    "7b9653e3999c5147e355731238543f1865db209038c08800ecb8ac24878aa0eb729504f3"
+    "919c0f19a8512517730b604e2f877ec02ecc8b16aee8e738de90b08d2f950ef3ccc55d10"
+)
 
 
 class MyQAuth:
@@ -96,19 +97,14 @@ async def async_exchange_code(session: ClientSession, code: str, verifier: str) 
 
 
 async def _mint_app_check_token(session: ClientSession) -> str:
-    endpoint = (
-        "https://firebaseappcheck.googleapis.com/v1/projects/"
-        f"{FIREBASE_PROJECT_ID}/apps/{FIREBASE_APP_ID}:exchangeDebugToken"
-    )
+    profile = AppCheckProfile.load(APP_CHECK_DATA, _APP_CHECK_DATA)
+    endpoint = f"https://firebaseappcheck.googleapis.com/v1/{profile.resource}"
     payload = await _post_json(
         session,
         endpoint,
-        params={"key": FIREBASE_API_KEY},
-        json_body={"debugToken": FIREBASE_DEBUG_TOKEN},
-        headers={
-            "X-Android-Package": ANDROID_PACKAGE,
-            "X-Android-Cert": ANDROID_CERT_SHA1,
-        },
+        params=profile.parameters,
+        json_body=profile.payload,
+        headers=profile.headers,
     )
     token = payload.get("token")
     if not isinstance(token, str) or not token:
