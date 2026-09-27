@@ -9,7 +9,7 @@ from custom_components.myq.client import MyQClient
 from custom_components.myq.exceptions import MyQApiError, MyQAuthenticationError
 from custom_components.myq.models import GarageDoor
 
-from .test_auth import FakeResponse, FakeSession
+from .http import FakeResponse, FakeSession
 
 
 async def test_client_discovers_garage_doors() -> None:
