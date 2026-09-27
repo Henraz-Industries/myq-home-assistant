@@ -2,6 +2,41 @@
 
 <!-- version list -->
 
+## v0.2.3 (2026-09-27)
+
+### Bug Fixes
+
+- Preserve entities when a garage door is missing
+  ([`8f8d877`](https://github.com/bvdcode/myq-home-assistant/commit/8f8d8770fd939d2f27ebc60bb99ffee0b3bc3d62))
+
+### Continuous Integration
+
+- Publish a patch release on every main push
+  ([`833a562`](https://github.com/bvdcode/myq-home-assistant/commit/833a562de9bc4c18dd43415713f908690f02d4e3))
+
+### Refactoring
+
+- Load embedded App Check profile
+  ([`586dd08`](https://github.com/bvdcode/myq-home-assistant/commit/586dd08fb9304aa4cdd603cbaf50a2a1b0cf3ee7))
+
+- Separate domain models from Home Assistant runtime
+  ([`c8200e7`](https://github.com/bvdcode/myq-home-assistant/commit/c8200e702ed143d871014429666afec0654fe45a))
+
+- Separate OAuth and sign-in page handling
+  ([`902d16a`](https://github.com/bvdcode/myq-home-assistant/commit/902d16af31207813a76b12eef2806e8df3d10769))
+
+- Share credential flow handling
+  ([`ffc50e7`](https://github.com/bvdcode/myq-home-assistant/commit/ffc50e7a496f240024e6ec9a9c82092f85541b40))
+
+- Share HTTP test support
+  ([`9ad5308`](https://github.com/bvdcode/myq-home-assistant/commit/9ad5308a2b9031117fe5db1fa576516e979c8631))
+
+### Testing
+
+- Cover token refresh failures and recovery
+  ([`aee905d`](https://github.com/bvdcode/myq-home-assistant/commit/aee905db3d8ca72fbaaddaf7aac003910d95bc76))
+
+
 ## v0.2.2 (2026-09-13)
 
 ### Bug Fixes
