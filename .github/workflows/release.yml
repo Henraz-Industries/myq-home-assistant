@@ -15,6 +15,9 @@ concurrency:
 jobs:
   release:
     name: Version and publish
+    if: >-
+      github.event.head_commit.author.name != 'github-actions[bot]' ||
+      !startsWith(github.event.head_commit.message, 'chore(release): ')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,6 +68,7 @@ jobs:
           git_committer_name: github-actions[bot]
           git_committer_email: 41898282+github-actions[bot]@users.noreply.github.com
           vcs_release: "false"
+          force: patch
 
       - name: Prepare release notes
         if: steps.release.outputs.released == 'true'
