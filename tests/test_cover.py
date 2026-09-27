@@ -53,6 +53,23 @@ async def test_cover_translates_command_failure() -> None:
     coordinator.async_request_refresh.assert_not_awaited()
 
 
+async def test_missing_door_has_no_state_and_cannot_receive_commands() -> None:
+    entity, coordinator = _entity("closed")
+    coordinator.data = {}
+
+    assert entity.available is False
+    assert entity.is_closed is None
+    assert entity.is_opening is False
+    assert entity.is_closing is False
+    for command in (entity.async_open_cover, entity.async_close_cover):
+        with pytest.raises(HomeAssistantError):
+            await command()
+
+    coordinator.client.async_open_door.assert_not_awaited()
+    coordinator.client.async_close_door.assert_not_awaited()
+    coordinator.async_request_refresh.assert_not_awaited()
+
+
 def _entity(state: str) -> tuple[MyQGarageDoor, MagicMock]:
     door = GarageDoor("account-1", "door-1", "Garage", None, state, True)
     coordinator = MagicMock()

@@ -88,4 +88,7 @@ class MyQSensor(MyQEntity, SensorEntity):
 
     @property
     def native_value(self) -> StateType:
-        return self.entity_description.value_fn(self.door)
+        door = self.door
+        if door is None:
+            return None
+        return self.entity_description.value_fn(door)

@@ -11,7 +11,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .entity import MyQEntity
-from .exceptions import MyQError
+from .exceptions import MyQApiError, MyQError
+from .models import GarageDoor
 from .runtime import MyQConfigEntry
 
 PARALLEL_UPDATES = 1
@@ -34,7 +35,10 @@ class MyQGarageDoor(MyQEntity, CoverEntity):
 
     @property
     def is_closed(self) -> bool | None:
-        match self.door.door_state:
+        door = self.door
+        if door is None:
+            return None
+        match door.door_state:
             case "closed":
                 return True
             case "open" | "opening" | "closing" | "moving" | "stopped":
@@ -46,16 +50,18 @@ class MyQGarageDoor(MyQEntity, CoverEntity):
 
     @property
     def is_opening(self) -> bool:
-        return self.door.door_state == "opening"
+        door = self.door
+        return door is not None and door.door_state == "opening"
 
     @property
     def is_closing(self) -> bool:
-        return self.door.door_state == "closing"
+        door = self.door
+        return door is not None and door.door_state == "closing"
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         del kwargs
         try:
-            await self.coordinator.client.async_open_door(self.door)
+            await self.coordinator.client.async_open_door(self._required_door())
         except (ClientError, MyQError) as error:
             raise HomeAssistantError(
                 translation_domain="myq",
@@ -66,10 +72,16 @@ class MyQGarageDoor(MyQEntity, CoverEntity):
     async def async_close_cover(self, **kwargs: Any) -> None:
         del kwargs
         try:
-            await self.coordinator.client.async_close_door(self.door)
+            await self.coordinator.client.async_close_door(self._required_door())
         except (ClientError, MyQError) as error:
             raise HomeAssistantError(
                 translation_domain="myq",
                 translation_key="command_failed",
             ) from error
         await self.coordinator.async_request_refresh()
+
+    def _required_door(self) -> GarageDoor:
+        door = self.door
+        if door is None:
+            raise MyQApiError("The garage door is unavailable")
+        return door

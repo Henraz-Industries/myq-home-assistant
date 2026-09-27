@@ -26,11 +26,12 @@ class MyQEntity(CoordinatorEntity[MyQDataUpdateCoordinator]):
         )
 
     @property
-    def door(self) -> GarageDoor:
-        return self.coordinator.data[self._serial_number]
+    def door(self) -> GarageDoor | None:
+        return self.coordinator.data.get(self._serial_number)
 
     @property
     def available(self) -> bool:
         if not super().available:
             return False
-        return self.door.online is not False
+        door = self.door
+        return door is not None and door.online is not False

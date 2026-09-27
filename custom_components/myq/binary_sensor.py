@@ -82,10 +82,18 @@ class MyQBinarySensor(MyQEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        return self.entity_description.is_on_fn(self.door)
+        door = self.door
+        if door is None:
+            return None
+        return self.entity_description.is_on_fn(door)
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
-        if self.entity_description.key != "active_fault" or not self.door.active_fault_codes:
+        door = self.door
+        if (
+            self.entity_description.key != "active_fault"
+            or door is None
+            or not door.active_fault_codes
+        ):
             return None
-        return {"fault_codes": self.door.active_fault_codes}
+        return {"fault_codes": door.active_fault_codes}

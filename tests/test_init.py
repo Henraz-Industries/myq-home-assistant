@@ -1,8 +1,10 @@
 from collections.abc import Callable
+from dataclasses import replace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -15,6 +17,7 @@ from custom_components.myq.const import (
     MFA_METHOD_EMAIL,
 )
 from custom_components.myq.models import GarageDoor, OAuthTokens
+from custom_components.myq.runtime import MyQRuntimeData
 
 EMAIL = "driver@example.com"
 DOOR = GarageDoor(
@@ -104,6 +107,75 @@ async def test_setup_creates_cover_and_persists_refreshed_tokens(
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert _entry_state(entry) is ConfigEntryState.NOT_LOADED
+
+
+async def test_missing_door_recovers_all_entities_without_losing_customization(
+    hass: HomeAssistant,
+) -> None:
+    entry = _entry()
+    entry.add_to_hass(hass)
+    door = replace(DOOR, battery_backup_state="charged")
+    other_door = replace(door, serial_number="door-2", name="Side garage")
+    client = MagicMock()
+    client.async_get_garage_doors = AsyncMock(return_value=(door, other_door))
+
+    with patch("custom_components.myq.MyQClient", return_value=client):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    cover_id = registry.async_get_entity_id("cover", DOMAIN, door.serial_number)
+    assert cover_id is not None
+    registry.async_update_entity(cover_id, new_entity_id="cover.driveway", name="Driveway")
+    await hass.async_block_till_done()
+    registered = er.async_entries_for_config_entry(registry, entry.entry_id)
+    original_entities = {entity.entity_id: entity for entity in registered}
+    assert len(original_entities) == 16
+    original_states = {}
+    for entity in registered:
+        state = hass.states.get(entity.entity_id)
+        assert state is not None
+        original_states[entity.entity_id] = state.state
+
+    runtime = cast(MyQRuntimeData, entry.runtime_data)
+    client.async_get_garage_doors.return_value = (other_door,)
+    await runtime.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    for entity in registered:
+        state = hass.states.get(entity.entity_id)
+        assert state is not None
+        if entity.unique_id.startswith(door.serial_number):
+            assert state.state == STATE_UNAVAILABLE
+        else:
+            assert state.state == original_states[entity.entity_id]
+    assert {
+        entity.entity_id: entity
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
+    } == original_entities
+
+    client.async_get_garage_doors.return_value = (
+        replace(door, door_state="open", absolute_cycle_count=124),
+        other_door,
+    )
+    await runtime.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    cycle_id = registry.async_get_entity_id("sensor", DOMAIN, "door-1_absolute_cycle_count")
+    assert cycle_id is not None
+    expected_states = {**original_states, "cover.driveway": "open", cycle_id: "124"}
+    for entity_id, expected in expected_states.items():
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert state.state == expected
+    assert {
+        entity.entity_id: entity
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
+    } == original_entities
+    assert _entry_state(entry) is ConfigEntryState.LOADED
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
 
 
 def _entry() -> MockConfigEntry:
