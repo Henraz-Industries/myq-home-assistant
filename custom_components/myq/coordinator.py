@@ -8,7 +8,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .client import MyQClient
 from .const import DEFAULT_UPDATE_INTERVAL, DOMAIN
 from .exceptions import MyQApiError, MyQAuthenticationError
-from .models import MyQConfigEntry, MyQCoordinatorData
+from .runtime import MyQConfigEntry, MyQCoordinatorData
 
 _LOGGER = logging.getLogger(__name__)
 

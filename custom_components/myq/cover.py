@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .entity import MyQEntity
 from .exceptions import MyQError
-from .models import MyQConfigEntry
+from .runtime import MyQConfigEntry
 
 PARALLEL_UPDATES = 1
 

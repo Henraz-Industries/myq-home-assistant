@@ -36,7 +36,8 @@ from .exceptions import (
     MyQInvalidMfaError,
     MyQUnsupportedAuthPageError,
 )
-from .models import MyQConfigData, MyQConfigEntry, OAuthTokens
+from .models import OAuthTokens
+from .runtime import MyQConfigData, MyQConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 

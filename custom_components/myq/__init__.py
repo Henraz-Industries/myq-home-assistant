@@ -13,7 +13,8 @@ from .client import MyQClient
 from .const import CONF_TOKENS, DOMAIN
 from .coordinator import MyQDataUpdateCoordinator
 from .exceptions import MyQApiError, MyQAuthenticationError
-from .models import MyQConfigData, MyQConfigEntry, MyQRuntimeData, OAuthTokens
+from .models import OAuthTokens
+from .runtime import MyQConfigData, MyQConfigEntry, MyQRuntimeData
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 PLATFORMS: tuple[Platform, ...] = (

@@ -13,7 +13,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MyQDataUpdateCoordinator
 from .entity import MyQEntity
-from .models import GarageDoor, MyQConfigEntry
+from .models import GarageDoor
+from .runtime import MyQConfigEntry
 
 type IsOnFn = Callable[[GarageDoor], bool | None]
 type ExistsFn = Callable[[GarageDoor], bool]

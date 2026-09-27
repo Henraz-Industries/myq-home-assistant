@@ -9,7 +9,8 @@ from homeassistant.helpers.typing import StateType
 
 from .coordinator import MyQDataUpdateCoordinator
 from .entity import MyQEntity
-from .models import GarageDoor, MyQConfigEntry
+from .models import GarageDoor
+from .runtime import MyQConfigEntry
 
 type ValueFn = Callable[[GarageDoor], StateType]
 type ExistsFn = Callable[[GarageDoor], bool]

@@ -1,25 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypedDict
-
-from homeassistant.config_entries import ConfigEntry
-
-if TYPE_CHECKING:
-    from .client import MyQClient
-    from .coordinator import MyQDataUpdateCoordinator
+from typing import TypedDict
 
 
 class StoredTokens(TypedDict):
     access_token: str
     refresh_token: str
     expires_at: float
-
-
-class MyQConfigData(TypedDict):
-    email: str
-    mfa_method: str
-    tokens: StoredTokens
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,15 +38,3 @@ class GarageDoor:
     absolute_cycle_count: int | None = None
     service_cycle_count: int | None = None
     last_device_activation_source: str | None = None
-
-
-type MyQCoordinatorData = dict[str, GarageDoor]
-
-
-@dataclass(frozen=True, slots=True)
-class MyQRuntimeData:
-    client: MyQClient
-    coordinator: MyQDataUpdateCoordinator
-
-
-type MyQConfigEntry = ConfigEntry[MyQRuntimeData]
