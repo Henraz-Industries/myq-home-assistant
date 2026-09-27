@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
 from homeassistant.config_entries import ConfigEntry
 
-from .models import GarageDoor, StoredTokens
+from .models import GarageDoor, OAuthTokens, StoredTokens
 
 if TYPE_CHECKING:
     from .client import MyQClient
@@ -28,3 +29,22 @@ class MyQRuntimeData:
 
 
 type MyQConfigEntry = ConfigEntry[MyQRuntimeData]
+
+
+def tokens_to_data(tokens: OAuthTokens) -> StoredTokens:
+    return StoredTokens(
+        access_token=tokens.access_token,
+        refresh_token=tokens.refresh_token,
+        expires_at=tokens.expires_at,
+    )
+
+
+def tokens_from_data(data: Mapping[str, object]) -> OAuthTokens:
+    access_token = data.get("access_token")
+    refresh_token = data.get("refresh_token")
+    expires_at = data.get("expires_at")
+    if not isinstance(access_token, str) or not isinstance(refresh_token, str):
+        raise ValueError("Stored OAuth tokens are invalid")
+    if not isinstance(expires_at, int | float):
+        raise ValueError("Stored OAuth expiry is invalid")
+    return OAuthTokens(access_token, refresh_token, float(expires_at))

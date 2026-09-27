@@ -8,13 +8,19 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError, Co
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .auth import MyQAuth, tokens_from_data, tokens_to_data
 from .client import MyQClient
 from .const import CONF_TOKENS, DOMAIN
 from .coordinator import MyQDataUpdateCoordinator
 from .exceptions import MyQApiError, MyQAuthenticationError
 from .models import OAuthTokens
-from .runtime import MyQConfigData, MyQConfigEntry, MyQRuntimeData
+from .oauth import MyQAuth
+from .runtime import (
+    MyQConfigData,
+    MyQConfigEntry,
+    MyQRuntimeData,
+    tokens_from_data,
+    tokens_to_data,
+)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 PLATFORMS: tuple[Platform, ...] = (

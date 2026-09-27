@@ -7,7 +7,6 @@ from typing import cast
 
 from aiohttp import ClientSession
 
-from .auth import MyQAuth
 from .const import (
     ACCOUNTS_BASE_URL,
     APP_VERSION,
@@ -18,6 +17,7 @@ from .const import (
 )
 from .exceptions import MyQApiError, MyQAuthenticationError
 from .models import GarageDoor, MyQAccount
+from .oauth import MyQAuth
 
 
 class MyQClient:

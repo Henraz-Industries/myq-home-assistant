@@ -16,7 +16,7 @@ from homeassistant.helpers.aiohttp_client import (
     async_get_clientsession,
 )
 
-from .auth import MyQAuth, MyQLoginSession, tokens_to_data
+from .auth import MyQLoginSession
 from .client import MyQClient
 from .const import (
     CONF_EMAIL,
@@ -37,7 +37,8 @@ from .exceptions import (
     MyQUnsupportedAuthPageError,
 )
 from .models import OAuthTokens
-from .runtime import MyQConfigData, MyQConfigEntry
+from .oauth import MyQAuth
+from .runtime import MyQConfigData, MyQConfigEntry, tokens_to_data
 
 _LOGGER = logging.getLogger(__name__)
 

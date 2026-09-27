@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aiohttp import ClientSession
 
-from custom_components.myq.auth import MyQAuth
 from custom_components.myq.client import MyQClient
 from custom_components.myq.exceptions import MyQApiError, MyQAuthenticationError
 from custom_components.myq.models import GarageDoor
+from custom_components.myq.oauth import MyQAuth
 
 from .http import FakeResponse, FakeSession
 

@@ -1,7 +1,7 @@
 import pytest
 
-from custom_components.myq.auth import HttpPage, _login_form
 from custom_components.myq.auth_forms import parse_forms as _parse_forms
+from custom_components.myq.auth_pages import HttpPage, login_form
 
 
 @pytest.mark.parametrize(
@@ -87,7 +87,7 @@ def test_login_form_can_submit_to_the_current_page(action: str) -> None:
         '<input type="password" name="Password"></form>',
     )
 
-    assert _login_form(page).action == ""
+    assert login_form(page).action == ""
 
 
 def test_ignores_incomplete_login_forms() -> None:
@@ -100,7 +100,7 @@ def test_ignores_incomplete_login_forms() -> None:
         '<input name="Password" type="password"></form>',
     )
 
-    assert _login_form(page).action == "/login"
+    assert login_form(page).action == "/login"
 
 
 def test_does_not_treat_an_email_field_as_an_otp_on_the_verification_page() -> None:

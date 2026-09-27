@@ -1,129 +1,37 @@
 from __future__ import annotations
 
-import asyncio
-import base64
-import hashlib
-import html
-import json
-import re
-import secrets
-import time
 import urllib.parse
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from contextlib import suppress
-from dataclasses import dataclass
 from typing import cast
 
 from aiohttp import ClientSession
 
-from .auth_forms import ParsedForm
-from .auth_forms import parse_forms as _parse_forms
+from .auth_pages import (
+    HttpPage,
+    MfaForm,
+    consent_form,
+    login_form,
+    otp_form,
+    raise_for_challenge,
+    validation_error,
+)
 from .browser_auth import _BrowserAuthorization
 from .const import (
-    ANDROID_CERT_SHA1,
-    ANDROID_PACKAGE,
-    APP_VERSION,
-    BRAND_ID,
     BROWSER_USER_AGENT,
-    FIREBASE_API_KEY,
-    FIREBASE_APP_ID,
-    FIREBASE_DEBUG_TOKEN,
-    FIREBASE_PROJECT_ID,
     IDENTITY_BASE_URL,
     MFA_METHOD_EMAIL,
     MFA_METHOD_SMS,
-    OAUTH_CLIENT_ID,
     OAUTH_REDIRECT_URI,
-    OAUTH_SCOPE,
-    TOKEN_EXPIRY_MARGIN,
-    USER_AGENT,
 )
 from .exceptions import (
     MyQApiError,
-    MyQAuthenticationError,
     MyQBrowserSessionExpiredError,
-    MyQCloudflareChallengeError,
     MyQInvalidCredentialsError,
     MyQInvalidMfaError,
-    MyQUnsupportedAuthPageError,
 )
-from .models import OAuthTokens, StoredTokens
-
-TokenListener = Callable[[OAuthTokens], None]
-
-
-@dataclass(frozen=True, slots=True)
-class HttpPage:
-    url: str
-    status: int
-    location: str | None
-    body: str
-
-
-@dataclass(frozen=True, slots=True)
-class MfaForm:
-    page_url: str
-    action: str
-    fields: dict[str, str]
-    otp_field: str
-
-
-def tokens_to_data(tokens: OAuthTokens) -> StoredTokens:
-    return StoredTokens(
-        access_token=tokens.access_token,
-        refresh_token=tokens.refresh_token,
-        expires_at=tokens.expires_at,
-    )
-
-
-def tokens_from_data(data: Mapping[str, object]) -> OAuthTokens:
-    access_token = data.get("access_token")
-    refresh_token = data.get("refresh_token")
-    expires_at = data.get("expires_at")
-    if not isinstance(access_token, str) or not isinstance(refresh_token, str):
-        raise ValueError("Stored OAuth tokens are invalid")
-    if not isinstance(expires_at, int | float):
-        raise ValueError("Stored OAuth expiry is invalid")
-    return OAuthTokens(access_token, refresh_token, float(expires_at))
-
-
-class MyQAuth:
-    def __init__(
-        self,
-        session: ClientSession,
-        tokens: OAuthTokens,
-        token_listener: TokenListener,
-    ) -> None:
-        self._session = session
-        self._tokens = tokens
-        self._token_listener = token_listener
-        self._refresh_lock = asyncio.Lock()
-
-    async def async_access_token(self) -> str:
-        if self._tokens.expires_at - TOKEN_EXPIRY_MARGIN.total_seconds() > time.time():
-            return self._tokens.access_token
-        async with self._refresh_lock:
-            if self._tokens.expires_at - TOKEN_EXPIRY_MARGIN.total_seconds() > time.time():
-                return self._tokens.access_token
-            return (await self.async_refresh()).access_token
-
-    async def async_refresh(self) -> OAuthTokens:
-        payload = await _post_json(
-            self._session,
-            f"{IDENTITY_BASE_URL}/connect/token",
-            data={
-                "client_id": OAUTH_CLIENT_ID,
-                "scope": OAUTH_SCOPE,
-                "redirect_uri": OAUTH_REDIRECT_URI,
-                "grant_type": "refresh_token",
-                "refresh_token": self._tokens.refresh_token,
-            },
-            headers=_token_headers(),
-        )
-        tokens = _oauth_tokens(payload, self._tokens.refresh_token)
-        self._tokens = tokens
-        self._token_listener(tokens)
-        return tokens
+from .models import OAuthTokens
+from .oauth import async_exchange_code, create_authorization_url
 
 
 class MyQLoginSession:
@@ -139,7 +47,7 @@ class MyQLoginSession:
         password: str,
         mfa_method: str,
     ) -> OAuthTokens | None:
-        authorization_url, verifier = _authorization_url()
+        authorization_url, verifier = create_authorization_url()
         self._verifier = verifier
         page = await self._request_page(
             "GET",
@@ -149,9 +57,9 @@ class MyQLoginSession:
         authorization_code, page = await self._follow_redirects(page)
         if authorization_code is not None:
             return await self._async_exchange_code(authorization_code)
-        _raise_for_challenge(page)
+        raise_for_challenge(page)
 
-        form = _login_form(page)
+        form = login_form(page)
         fields = dict(form.fields)
         fields[cast(str, form.email_field)] = email_address
         fields[cast(str, form.password_field)] = password
@@ -164,15 +72,15 @@ class MyQLoginSession:
         authorization_code, result = await self._follow_redirects(submitted)
         if authorization_code is not None:
             return await self._async_exchange_code(authorization_code)
-        _raise_for_challenge(result)
+        raise_for_challenge(result)
 
-        message = _validation_error(result.body)
+        message = validation_error(result.body)
         if message is not None:
             raise MyQInvalidCredentialsError(message)
         authorization_code, result = await self._select_mfa_method(result, mfa_method)
         if authorization_code is not None:
             return await self._async_exchange_code(authorization_code)
-        _raise_for_challenge(result)
+        raise_for_challenge(result)
         self._set_mfa_form(result)
         return None
 
@@ -191,14 +99,14 @@ class MyQLoginSession:
             ),
         )
         authorization_code, result = await self._follow_redirects(submitted)
-        _raise_for_challenge(result)
+        raise_for_challenge(result)
         authorization_code, result = await self._follow_consent(
             authorization_code,
             result,
         )
         if authorization_code is None:
-            _raise_for_challenge(result)
-            message = _validation_error(result.body)
+            raise_for_challenge(result)
+            message = validation_error(result.body)
             if message is None:
                 self._set_mfa_form(result)
             else:
@@ -208,7 +116,7 @@ class MyQLoginSession:
         return await self._async_exchange_code(authorization_code)
 
     def start_browser(self) -> str:
-        authorization_url, verifier = _authorization_url()
+        authorization_url, verifier = create_authorization_url()
         self._verifier = verifier
         self._mfa_form = None
         self._browser_authorization = _BrowserAuthorization.create(authorization_url)
@@ -223,24 +131,7 @@ class MyQLoginSession:
     async def _async_exchange_code(self, code: str) -> OAuthTokens:
         if self._verifier is None:
             raise MyQApiError("The PKCE verifier is missing")
-        app_check_token = await _mint_app_check_token(self._session)
-        payload = await _post_json(
-            self._session,
-            f"{IDENTITY_BASE_URL}/connect/token",
-            data={
-                "client_id": OAUTH_CLIENT_ID,
-                "scope": OAUTH_SCOPE,
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": OAUTH_REDIRECT_URI,
-                "code_verifier": self._verifier,
-            },
-            headers={
-                **_token_headers(),
-                "Firebase-AppCheck-Token": app_check_token,
-            },
-        )
-        return _oauth_tokens(payload)
+        return await async_exchange_code(self._session, code, self._verifier)
 
     async def _follow_redirects(self, page: HttpPage) -> tuple[str | None, HttpPage]:
         current = page
@@ -269,7 +160,7 @@ class MyQLoginSession:
         if server_method is None:
             raise MyQApiError("Unsupported MyQ MFA method")
 
-        form = _otp_form(page)
+        form = otp_form(page)
         selected_method = next(
             (
                 value
@@ -317,7 +208,7 @@ class MyQLoginSession:
         if urllib.parse.urlsplit(page.url).path.lower() != "/consent":
             return None, page
 
-        form = _consent_form(page.body)
+        form = consent_form(page.body)
         post_url = urllib.parse.urljoin(page.url, form.action)
         consented = await self._request_page(
             "POST",
@@ -367,119 +258,13 @@ class MyQLoginSession:
             )
 
     def _set_mfa_form(self, page: HttpPage) -> None:
-        form = _otp_form(page)
+        form = otp_form(page)
         self._mfa_form = MfaForm(
             page_url=page.url,
             action=urllib.parse.urljoin(page.url, form.action),
             fields=form.fields,
             otp_field=cast(str, form.otp_field),
         )
-
-
-async def _mint_app_check_token(session: ClientSession) -> str:
-    endpoint = (
-        "https://firebaseappcheck.googleapis.com/v1/projects/"
-        f"{FIREBASE_PROJECT_ID}/apps/{FIREBASE_APP_ID}:exchangeDebugToken"
-    )
-    payload = await _post_json(
-        session,
-        endpoint,
-        params={"key": FIREBASE_API_KEY},
-        json_body={"debugToken": FIREBASE_DEBUG_TOKEN},
-        headers={
-            "X-Android-Package": ANDROID_PACKAGE,
-            "X-Android-Cert": ANDROID_CERT_SHA1,
-        },
-    )
-    token = payload.get("token")
-    if not isinstance(token, str) or not token:
-        raise MyQApiError("Firebase App Check did not return a token")
-    return token
-
-
-async def _post_json(
-    session: ClientSession,
-    url: str,
-    *,
-    data: Mapping[str, str] | None = None,
-    params: Mapping[str, str] | None = None,
-    json_body: Mapping[str, str] | None = None,
-    headers: Mapping[str, str] | None = None,
-) -> dict[str, object]:
-    async with session.post(
-        url,
-        data=data,
-        params=params,
-        json=json_body,
-        headers=headers,
-    ) as response:
-        body = await response.text()
-        try:
-            parsed = json.loads(body)
-        except json.JSONDecodeError as error:
-            raise MyQApiError(
-                f"MyQ returned HTTP {response.status} with an invalid JSON body"
-            ) from error
-        if not isinstance(parsed, dict):
-            raise MyQApiError("MyQ returned an unexpected JSON response")
-        payload = cast(dict[str, object], parsed)
-        if response.status < 400:
-            return payload
-        error_code = payload.get("code") or payload.get("error")
-        if response.status in {400, 401, 403}:
-            raise MyQAuthenticationError(str(error_code or response.status))
-        raise MyQApiError(f"MyQ request failed with HTTP {response.status}")
-
-
-def _oauth_tokens(
-    payload: Mapping[str, object],
-    existing_refresh_token: str | None = None,
-) -> OAuthTokens:
-    access_token = payload.get("access_token")
-    refresh_token = payload.get("refresh_token", existing_refresh_token)
-    expires_in = payload.get("expires_in")
-    if not isinstance(access_token, str) or not isinstance(refresh_token, str):
-        raise MyQApiError("MyQ returned an incomplete OAuth token response")
-    if not isinstance(expires_in, int | float):
-        raise MyQApiError("MyQ returned an invalid OAuth expiry")
-    return OAuthTokens(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_at=time.time() + float(expires_in),
-    )
-
-
-def _authorization_url() -> tuple[str, str]:
-    verifier = secrets.token_urlsafe(32)
-    challenge = (
-        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
-        .decode("ascii")
-        .rstrip("=")
-    )
-    query = urllib.parse.urlencode(
-        {
-            "acr_values": "unified_flow:v1 brand:myq",
-            "client_id": OAUTH_CLIENT_ID,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-            "ui_locales": "en-US",
-            "redirect_uri": OAUTH_REDIRECT_URI,
-            "response_type": "code",
-            "scope": OAUTH_SCOPE,
-            "prompt": "login",
-        }
-    )
-    return f"{IDENTITY_BASE_URL}/connect/authorize?{query}", verifier
-
-
-def _token_headers() -> dict[str, str]:
-    return {
-        "Accept": "application/json",
-        "App-Version": APP_VERSION,
-        "BrandId": BRAND_ID,
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": USER_AGENT,
-    }
 
 
 def _login_headers(
@@ -504,101 +289,6 @@ def _login_headers(
         headers["Content-Type"] = "application/x-www-form-urlencoded"
         headers["Origin"] = IDENTITY_BASE_URL
     return headers
-
-
-def _login_form(page: HttpPage) -> ParsedForm:
-    form = next(
-        (
-            candidate
-            for candidate in _parse_forms(page.body, page.url)
-            if candidate.password_field and candidate.email_field
-        ),
-        None,
-    )
-    if form is None:
-        raise MyQApiError(f"The MyQ sign-in form was not found ({_page_summary(page)})")
-    return form
-
-
-def _page_summary(page: HttpPage) -> str:
-    path = urllib.parse.urlsplit(page.url).path or "/"
-    title_match = re.search(
-        r"<title\b[^>]*>(.*?)</title>",
-        page.body,
-        re.IGNORECASE | re.DOTALL,
-    )
-    title = _plain_text(title_match.group(1)) if title_match else ""
-    content = _plain_text(page.body)
-    parts = [f"HTTP {page.status} at {path}"]
-    if title:
-        parts.append(f"title={title[:120]!r}")
-    if content:
-        parts.append(f"content={content[:240]!r}")
-    return ", ".join(parts)
-
-
-def _plain_text(value: str) -> str:
-    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", value))).strip()
-
-
-def _otp_form(page: HttpPage) -> ParsedForm:
-    forms = _parse_forms(page.body, page.url)
-    form = next(
-        (candidate for candidate in forms if candidate.otp_field),
-        None,
-    )
-    if form is None or not 200 <= page.status < 300:
-        path = urllib.parse.urlsplit(page.url).path or "/"
-        message = (
-            "The MyQ MFA form was not recognized "
-            f"(HTTP {page.status} at {path}, forms={len(forms)})"
-        )
-        if 200 <= page.status < 300:
-            raise MyQUnsupportedAuthPageError(message)
-        raise MyQApiError(message)
-    return form
-
-
-def _consent_form(page_html: str) -> ParsedForm:
-    form = next(
-        (
-            candidate
-            for candidate in _parse_forms(page_html)
-            if "consent" in candidate.action.lower()
-        ),
-        None,
-    )
-    if form is None or not form.action:
-        raise MyQApiError("The MyQ consent form was not recognized")
-    fields = {**form.fields, "button": "yes"}
-    return ParsedForm(form.action, fields, None, None, None)
-
-
-def _validation_error(page_html: str) -> str | None:
-    flattened = re.sub(r"\s+", " ", page_html)
-    match = re.search(
-        r"validation-summary-errors.*?<ul>(.*?)</ul>|"
-        r"field-validation-error[^>]*>(.*?)<",
-        flattened,
-        re.IGNORECASE,
-    )
-    if match is None:
-        return None
-    raw = match.group(1) or match.group(2) or ""
-    message = html.unescape(re.sub(r"<[^>]+>", " ", raw)).strip()
-    return re.sub(r"\s+", " ", message) or None
-
-
-def _raise_for_challenge(page: HttpPage) -> None:
-    authorize_forbidden = (
-        page.status == 403
-        and urllib.parse.urlsplit(page.url).path.lower() == "/connect/authorize"
-        and "Resource not authorized" in page.body
-    )
-    if authorize_forbidden or any(
-        marker in page.body for marker in ("Just a moment", "Verify you are human")
-    ):
-        raise MyQCloudflareChallengeError
 
 
 def _redirect_code(redirect_url: str) -> str:
