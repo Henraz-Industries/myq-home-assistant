@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.4 (2026-09-27)
+
+### Refactoring
+
+- Share garage door command execution
+  ([`57b3091`](https://github.com/bvdcode/myq-home-assistant/commit/57b309155b47e68381e54be2b06e1f4ae31f125f))
+
+
 ## v0.2.3 (2026-09-27)
 
 ### Bug Fixes
