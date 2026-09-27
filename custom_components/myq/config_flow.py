@@ -4,13 +4,12 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Final, TypedDict, cast
+from typing import cast
 
 import voluptuous as vol
 from aiohttp import ClientError, ClientSession, CookieJar
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
-from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import (
     async_create_clientsession,
     async_get_clientsession,
@@ -18,13 +17,25 @@ from homeassistant.helpers.aiohttp_client import (
 
 from .auth import MyQLoginSession
 from .client import MyQClient
+from .config_flow_forms import (
+    BROWSER_CALLBACK_SCHEMA,
+    BROWSER_START_SCHEMA,
+    CREDENTIALS_SCHEMA,
+    MFA_SCHEMA,
+    REAUTH_MENU_OPTIONS,
+    REAUTH_SCHEMA,
+    USER_MENU_OPTIONS,
+    BrowserCallbackInput,
+    BrowserStartInput,
+    CredentialsInput,
+    MfaInput,
+    PasswordInput,
+)
 from .const import (
     CONF_EMAIL,
     CONF_MFA_METHOD,
     DEFAULT_MFA_METHOD,
     DOMAIN,
-    MFA_METHOD_EMAIL,
-    MFA_METHOD_SMS,
 )
 from .exceptions import (
     MyQAuthenticationError,
@@ -43,80 +54,11 @@ from .runtime import MyQConfigData, MyQConfigEntry, tokens_to_data
 _LOGGER = logging.getLogger(__name__)
 
 
-class CredentialsInput(TypedDict):
-    email: str
-    mfa_method: str
-    password: str
-
-
-class PasswordInput(TypedDict):
-    mfa_method: str
-    password: str
-
-
-class BrowserStartInput(TypedDict):
-    email: str
-
-
-class MfaInput(TypedDict):
-    code: str
-
-
-class BrowserCallbackInput(TypedDict):
-    callback_url: str
-
-
 @dataclass(frozen=True, slots=True)
 class LoginAttempt:
     tokens: OAuthTokens | None = None
     error: str | None = None
     browser_url: str | None = None
-
-
-EMAIL_SELECTOR = selector.TextSelector(
-    selector.TextSelectorConfig(
-        type=selector.TextSelectorType.EMAIL,
-        autocomplete="email",
-    )
-)
-PASSWORD_SELECTOR = selector.TextSelector(
-    selector.TextSelectorConfig(
-        type=selector.TextSelectorType.PASSWORD,
-        autocomplete="current-password",
-    )
-)
-MFA_SELECTOR = selector.TextSelector(selector.TextSelectorConfig(autocomplete="one-time-code"))
-MFA_METHOD_SELECTOR = selector.SelectSelector(
-    selector.SelectSelectorConfig(
-        options=[MFA_METHOD_EMAIL, MFA_METHOD_SMS],
-        translation_key="mfa_method",
-    )
-)
-
-CREDENTIALS_SCHEMA = vol.Schema(
-    {
-        vol.Required("email"): EMAIL_SELECTOR,
-        vol.Required("password"): PASSWORD_SELECTOR,
-        vol.Required(CONF_MFA_METHOD, default=DEFAULT_MFA_METHOD): MFA_METHOD_SELECTOR,
-    }
-)
-BROWSER_START_SCHEMA = vol.Schema({vol.Required("email"): EMAIL_SELECTOR})
-REAUTH_SCHEMA = vol.Schema(
-    {
-        vol.Required("password"): PASSWORD_SELECTOR,
-        vol.Required(CONF_MFA_METHOD, default=DEFAULT_MFA_METHOD): MFA_METHOD_SELECTOR,
-    }
-)
-USER_MENU_OPTIONS: Final = ("credentials", "browser_start")
-REAUTH_MENU_OPTIONS: Final = ("reauth_credentials", "browser_start")
-MFA_SCHEMA = vol.Schema({vol.Required("code"): MFA_SELECTOR})
-BROWSER_CALLBACK_SCHEMA = vol.Schema(
-    {
-        vol.Required("callback_url"): selector.TextSelector(
-            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-        )
-    }
-)
 
 
 class MyQConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -144,25 +86,15 @@ class MyQConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, object] | None = None,
     ) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
         if user_input is not None:
             credentials = cast(CredentialsInput, user_input)
             self._email = credentials["email"].strip().casefold()
-            self._mfa_method = credentials[CONF_MFA_METHOD]
             self._async_abort_entries_match({CONF_EMAIL: self._email})
-            attempt = await self._async_start_login(credentials["password"])
-            if attempt.tokens is not None:
-                return await self._async_finish(attempt.tokens)
-            if attempt.browser_url is not None:
-                return await self.async_step_browser()
-            if attempt.error is None:
-                return await self.async_step_mfa()
-            errors["base"] = attempt.error
-
-        return self.async_show_form(
+        return await self._async_credentials_step(
+            user_input,
             step_id="credentials",
-            data_schema=CREDENTIALS_SCHEMA,
-            errors=errors,
+            schema=CREDENTIALS_SCHEMA,
+            mfa_step_id="mfa",
         )
 
     async def async_step_browser_start(
@@ -218,23 +150,11 @@ class MyQConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, object] | None = None,
     ) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            password_input = cast(PasswordInput, user_input)
-            self._mfa_method = password_input[CONF_MFA_METHOD]
-            attempt = await self._async_start_login(password_input["password"])
-            if attempt.tokens is not None:
-                return await self._async_finish(attempt.tokens)
-            if attempt.browser_url is not None:
-                return await self.async_step_browser()
-            if attempt.error is None:
-                return await self.async_step_reauth_mfa()
-            errors["base"] = attempt.error
-
-        return self.async_show_form(
+        return await self._async_credentials_step(
+            user_input,
             step_id="reauth_credentials",
-            data_schema=REAUTH_SCHEMA,
-            errors=errors,
+            schema=REAUTH_SCHEMA,
+            mfa_step_id="reauth_mfa",
             description_placeholders={"email": self._required_email()},
         )
 
@@ -264,6 +184,35 @@ class MyQConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "authorization_url": self._required_browser_url(),
                 "email": self._required_email(),
             },
+        )
+
+    async def _async_credentials_step(
+        self,
+        user_input: dict[str, object] | None,
+        *,
+        step_id: str,
+        schema: vol.Schema,
+        mfa_step_id: str,
+        description_placeholders: dict[str, str] | None = None,
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            password_input = cast(PasswordInput, user_input)
+            self._mfa_method = password_input[CONF_MFA_METHOD]
+            attempt = await self._async_start_login(password_input["password"])
+            if attempt.tokens is not None:
+                return await self._async_finish(attempt.tokens)
+            if attempt.browser_url is not None:
+                return await self.async_step_browser()
+            if attempt.error is None:
+                return await self._async_mfa_step(mfa_step_id, None)
+            errors["base"] = attempt.error
+
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=schema,
+            errors=errors,
+            description_placeholders=description_placeholders,
         )
 
     async def _async_mfa_step(

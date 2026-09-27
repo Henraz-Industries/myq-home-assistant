@@ -2,6 +2,7 @@ import logging
 from unittest.mock import MagicMock
 
 import pytest
+from aiohttp import ClientConnectionError
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -315,6 +316,81 @@ async def test_reauthentication_updates_tokens_and_mfa_method(
     assert entry.data[CONF_MFA_METHOD] == MFA_METHOD_SMS
     assert entry.data[CONF_TOKENS]["refresh_token"] == "refresh"
     assert "password" not in entry.data
+
+
+@pytest.mark.parametrize("mfa_method", [MFA_METHOD_EMAIL, MFA_METHOD_SMS])
+async def test_reauthentication_retries_mfa_without_replacing_entry(
+    hass: HomeAssistant,
+    mock_login_session: MagicMock,
+    mock_myq_client: MagicMock,
+    mfa_method: str,
+) -> None:
+    original_data = _entry_data()
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=EMAIL, data=original_data)
+    entry.add_to_hass(hass)
+    mock_login_session.async_start.return_value = None
+    mock_login_session.async_submit_mfa.side_effect = [MyQInvalidMfaError, TOKENS]
+    mock_myq_client.async_get_garage_doors.return_value = (DOOR,)
+
+    result = await entry.start_reauth_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "reauth_credentials"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"password": PASSWORD, CONF_MFA_METHOD: mfa_method}
+    )
+    assert result["step_id"] == "reauth_mfa"
+    mock_login_session.async_start.assert_awaited_once_with(EMAIL, PASSWORD, mfa_method)
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "123456"})
+    assert result["type"] is data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "reauth_mfa"
+    assert result["errors"] == {"base": "invalid_mfa"}
+    assert entry.data == original_data
+    mock_login_session.http_session.detach.assert_not_called()
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "654321"})
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert hass.config_entries.async_entries(DOMAIN) == [entry]
+    assert entry.unique_id == EMAIL
+    assert entry.data[CONF_MFA_METHOD] == mfa_method
+    assert entry.data[CONF_TOKENS]["refresh_token"] == "refresh"
+    assert mock_login_session.async_submit_mfa.await_count == 2
+    mock_login_session.http_session.detach.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("error_type", "error_key"),
+    [(MyQInvalidCredentialsError, "invalid_auth"), (ClientConnectionError, "cannot_connect")],
+)
+async def test_reauthentication_credential_failure_preserves_entry(
+    hass: HomeAssistant,
+    mock_login_session: MagicMock,
+    error_type: type[MyQInvalidCredentialsError | ClientConnectionError],
+    error_key: str,
+) -> None:
+    original_data = _entry_data()
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=EMAIL, data=original_data)
+    entry.add_to_hass(hass)
+    mock_login_session.async_start.side_effect = error_type
+
+    result = await entry.start_reauth_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "reauth_credentials"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"password": PASSWORD, CONF_MFA_METHOD: MFA_METHOD_SMS}
+    )
+
+    assert result["type"] is data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "reauth_credentials"
+    assert result["errors"] == {"base": error_key}
+    placeholders = result["description_placeholders"]
+    assert placeholders is not None
+    assert placeholders["email"] == EMAIL
+    assert entry.data == original_data
+    mock_login_session.http_session.detach.assert_called_once_with()
 
 
 async def test_reauthentication_offers_browser_sign_in(
