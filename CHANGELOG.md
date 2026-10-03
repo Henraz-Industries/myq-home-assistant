@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.5 (2026-10-03)
+
+### Features
+
+- Add garage door state sensor for Alarmo
+  ([`5b97320`](https://github.com/bvdcode/myq-home-assistant/commit/5b97320a1116b3c378edc065b636c00a295e6d83))
+
+
 ## v0.2.4 (2026-09-27)
 
 ### Refactoring
