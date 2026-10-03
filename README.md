@@ -16,8 +16,15 @@ The integration provides:
 - discovery of every garage door attached to the account;
 - current door state and cloud availability;
 - open and close controls;
+- a door-open binary sensor for Alarmo and other sensor-based automations;
 - vacation mode, work-light, fault, cycle-count, and activation diagnostics;
 - cloud polling every 30 seconds.
+
+## Alarmo
+
+Each garage door includes a **Door open** binary sensor with the `garage_door` device class. Add this sensor in Alarmo's **Sensors** tab. The existing cover provides the open and close controls.
+
+The sensor is on whenever the door is known to be not closed, including while it is moving. Unknown states remain unknown, and offline or missing doors are unavailable. The sensor uses the same 30-second cloud polling as the cover.
 
 ## Requirements
 

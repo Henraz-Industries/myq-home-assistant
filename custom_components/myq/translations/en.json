@@ -90,6 +90,9 @@
   },
   "entity": {
     "binary_sensor": {
+      "door_open": {
+        "name": "Door open"
+      },
       "vacation_mode": {
         "name": "Vacation mode"
       },

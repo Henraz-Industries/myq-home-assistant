@@ -28,6 +28,13 @@ class MyQBinarySensorEntityDescription(BinarySensorEntityDescription):
 
 BINARY_SENSOR_DESCRIPTIONS: tuple[MyQBinarySensorEntityDescription, ...] = (
     MyQBinarySensorEntityDescription(
+        key="door_open",
+        translation_key="door_open",
+        device_class=BinarySensorDeviceClass.GARAGE_DOOR,
+        is_on_fn=lambda door: door.is_open,
+        exists_fn=lambda door: True,
+    ),
+    MyQBinarySensorEntityDescription(
         key="vacation_mode",
         translation_key="vacation_mode",
         icon="mdi:beach",

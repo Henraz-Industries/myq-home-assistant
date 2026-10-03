@@ -40,15 +40,7 @@ class MyQGarageDoor(MyQEntity, CoverEntity):
         door = self.door
         if door is None:
             return None
-        match door.door_state:
-            case "closed":
-                return True
-            case "open" | "opening" | "closing" | "moving" | "stopped":
-                return False
-            case None | "unknown":
-                return None
-            case _:
-                return None
+        return door.is_closed
 
     @property
     def is_opening(self) -> bool:

@@ -90,6 +90,9 @@
   },
   "entity": {
     "binary_sensor": {
+      "door_open": {
+        "name": "Дверь открыта"
+      },
       "vacation_mode": {
         "name": "Режим отпуска"
       },

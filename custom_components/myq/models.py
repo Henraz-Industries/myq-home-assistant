@@ -38,3 +38,24 @@ class GarageDoor:
     absolute_cycle_count: int | None = None
     service_cycle_count: int | None = None
     last_device_activation_source: str | None = None
+
+    @property
+    def is_closed(self) -> bool | None:
+        """Return whether the door is closed, or None when its state is unknown."""
+        match self.door_state:
+            case "closed":
+                return True
+            case "open" | "opening" | "closing" | "moving" | "stopped":
+                return False
+            case None | "unknown":
+                return None
+            case _:
+                return None
+
+    @property
+    def is_open(self) -> bool | None:
+        """Return whether the door is open, or None when its state is unknown."""
+        is_closed = self.is_closed
+        if is_closed is None:
+            return None
+        return not is_closed
