@@ -75,6 +75,16 @@ stores the issued OAuth tokens in the config entry and refreshes them
 automatically. Reauthentication is requested only when MyQ invalidates the
 stored authorization.
 
+## Diagnostics
+
+**Settings → Devices & services → MyQ → ⋮ → Download diagnostics** fetches the
+account's current device list, including devices the integration does not yet
+support such as cameras and hubs. Values under keys that identify the account,
+a device, or a network, or that grant access (IDs, serial numbers, links,
+URLs, tokens, MAC and IP addresses), are replaced with `**REDACTED**`; the key
+names stay so unsupported fields remain visible. Review the file before
+attaching it to an issue.
+
 ## Safety
 
 Opening or closing a garage door can cause injury or property damage. Keep the
