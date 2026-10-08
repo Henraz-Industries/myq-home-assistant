@@ -64,10 +64,33 @@ class MyQClient:
     async def async_close_door(self, door: GarageDoor) -> None:
         await self._async_command(door, "close")
 
+    async def async_get_device_items(
+        self,
+    ) -> dict[str, tuple[dict[str, object], ...]]:
+        """Return every raw device item, of any family, keyed by account ID."""
+        accounts = await self.async_get_accounts()
+        item_groups = await asyncio.gather(
+            *(self._async_get_account_items(account) for account in accounts)
+        )
+        return {
+            account.account_id: items for account, items in zip(accounts, item_groups, strict=True)
+        }
+
     async def _async_get_account_doors(
         self,
         account: MyQAccount,
     ) -> tuple[GarageDoor, ...]:
+        items = await self._async_get_account_items(account)
+        return tuple(
+            _garage_door(account.account_id, item)
+            for item in items
+            if item.get("device_family") == "garagedoor"
+        )
+
+    async def _async_get_account_items(
+        self,
+        account: MyQAccount,
+    ) -> tuple[dict[str, object], ...]:
         payload = await self._async_request_json(
             "GET",
             f"{DEVICES_BASE_URL}/api/v6.2/Accounts/{account.account_id}/Devices",
@@ -76,15 +99,12 @@ class MyQClient:
         if not isinstance(raw_items, list):
             raise MyQApiError("MyQ device discovery returned no item list")
 
-        doors: list[GarageDoor] = []
+        items: list[dict[str, object]] = []
         for raw_item in raw_items:
             if not isinstance(raw_item, dict):
                 raise MyQApiError("MyQ returned an invalid device")
-            item = cast(dict[str, object], raw_item)
-            if item.get("device_family") != "garagedoor":
-                continue
-            doors.append(_garage_door(account.account_id, item))
-        return tuple(doors)
+            items.append(cast(dict[str, object], raw_item))
+        return tuple(items)
 
     async def _async_command(self, door: GarageDoor, command: str) -> None:
         url = (

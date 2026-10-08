@@ -107,3 +107,32 @@ async def test_client_translates_http_errors(
 
     with pytest.raises(exception):
         await client.async_get_accounts()
+
+
+async def test_client_returns_raw_items_of_every_family() -> None:
+    session = FakeSession(
+        request_responses=[
+            FakeResponse("", body='{"accounts":[{"id":"account-1","name":"Home"}]}'),
+            FakeResponse(
+                "",
+                body=(
+                    '{"items":['
+                    '{"device_family":"garagedoor","serial_number":"door-1"},'
+                    '{"device_family":"camera","serial_number":"cam-1","state":{"online":true}}'
+                    "]}"
+                ),
+            ),
+        ]
+    )
+    auth = MagicMock(spec=MyQAuth)
+    auth.async_access_token = AsyncMock(return_value="access")
+    client = MyQClient(cast(ClientSession, session), auth)
+
+    items = await client.async_get_device_items()
+
+    assert items == {
+        "account-1": (
+            {"device_family": "garagedoor", "serial_number": "door-1"},
+            {"device_family": "camera", "serial_number": "cam-1", "state": {"online": True}},
+        )
+    }
