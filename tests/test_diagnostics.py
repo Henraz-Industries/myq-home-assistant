@@ -81,3 +81,53 @@ async def test_diagnostics_report_api_failure_without_details(hass: HomeAssistan
     result = await async_get_config_entry_diagnostics(hass, _entry(client))
 
     assert result["devices"] == {"error": "MyQApiError"}
+
+
+async def test_diagnostics_mask_identifiers_inside_links_and_transmitters(
+    hass: HomeAssistant,
+) -> None:
+    client = MagicMock()
+    client.async_get_device_items = AsyncMock(
+        return_value={
+            "acct-1234": (
+                {
+                    "serial_number": "CAM-0000-1111",
+                    "account_id": "acct-1234",
+                    "device_family": "camera",
+                    "state": {
+                        "links": {
+                            "stream": "/accounts/acct-1234/devices/cameras/CAM-0000-1111/stream",
+                        },
+                    },
+                },
+                {
+                    "serial_number": "GDO-2222",
+                    "device_family": "garagedoor",
+                    "state": {
+                        "ook_transmitters": {"TX0001": {"enabled": True}},
+                        "last_device_activation_source": "myq_app",
+                        "last_device_activation_source_id": "TX0002",
+                    },
+                },
+                {
+                    "device_family": "gateway",
+                    "state": {"physical_devices": ["CG0000"], "physical_cameras": []},
+                },
+            )
+        }
+    )
+
+    result = await async_get_config_entry_diagnostics(hass, _entry(client))
+
+    camera, door, gateway = result["devices"]["account_1"]
+    assert camera["state"]["links"] == {
+        "stream": f"/accounts/{REDACTED}/devices/cameras/{REDACTED}/stream",
+    }
+    assert door["state"] == {
+        "ook_transmitters": REDACTED,
+        "last_device_activation_source": "myq_app",
+        "last_device_activation_source_id": REDACTED,
+    }
+    assert gateway["state"] == {"physical_devices": REDACTED, "physical_cameras": REDACTED}
+    for secret in ("acct-1234", "CAM-0000-1111", "GDO-2222", "TX000", "CG0000"):
+        assert secret not in str(result)

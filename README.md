@@ -81,8 +81,9 @@ stored authorization.
 account's current device list, including devices the integration does not yet
 support such as cameras and hubs. Values under keys that identify the account,
 a device, or a network, or that grant access (IDs, serial numbers, links,
-URLs, tokens, MAC and IP addresses), are replaced with `**REDACTED**`; the key
-names stay so unsupported fields remain visible. Review the file before
+URLs, tokens, MAC and IP addresses, remote-transmitter IDs), are replaced with
+`**REDACTED**`, and those values are also masked where they appear inside other
+values such as link paths. Key names stay so unsupported fields remain visible. Review the file before
 attaching it to an issue.
 
 ## Safety
